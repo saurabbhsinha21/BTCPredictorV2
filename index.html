@@ -2,21 +2,27 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>BTC/USDT Prediction Tool</title>
+  <title>BTC/USDT Predictor V2 (ML + Rule-Based)</title>
   <link rel="stylesheet" href="style.css">
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.13.0/dist/tf.min.js"></script>
 </head>
 <body>
-  <h2>BTC/USDT Prediction (ML + Rules)</h2>
+  <h2>BTC/USDT Predictor (ML + Rule-Based)</h2>
+
   <form id="predictForm">
-    <label>Target Price (USDT):</label>
+    <label for="targetPrice">Target Price (USDT):</label>
     <input type="number" id="targetPrice" required>
-    <label>Target Time:</label>
+    
+    <label for="targetTime">Target Time:</label>
     <input type="datetime-local" id="targetTime" required>
+    
     <button type="submit">Predict</button>
   </form>
-  <div id="result"></div>
+
+  <div id="result" style="margin-top: 20px;"></div>
+  <canvas id="sparklineChart" height="60"></canvas>
+
   <script src="script.js"></script>
 </body>
 </html>
