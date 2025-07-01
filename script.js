@@ -25,6 +25,7 @@ async function runPrediction() {
     fetchKlines("5m", 20),
     fetchKlines("15m", 20)
   ]);
+
   const close1 = m1.map(d => parseFloat(d[4]));
   const open1 = m1.map(d => parseFloat(d[1]));
   const high1 = m1.map(d => parseFloat(d[2]));
@@ -50,6 +51,7 @@ async function runPrediction() {
 
   const avgVolume = vol1.reduce((a, b) => a + b) / vol1.length;
   const volumeStrong = vol1.at(-1) > avgVolume;
+
   // 🔸 Heiken Ashi smoothing
   const ha = [];
   for (let i = 0; i < close1.length; i++) {
@@ -83,6 +85,7 @@ async function runPrediction() {
 
   if (priceNow > recentHigh && volumeSpike) predictedPrice += 30;
   else if (priceNow < recentLow && volumeSpike) predictedPrice -= 30;
+
   const prediction = predictedPrice >= targetPrice ? "Yes ✅" : "No ❌";
 
   // 🔰 Final confidence score
@@ -138,6 +141,7 @@ async function runPrediction() {
     }
   });
 }
+
 async function fetchKlines(interval, limit) {
   const res = await fetch(`https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval=${interval}&limit=${limit}`);
   return await res.json();
