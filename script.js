@@ -1,13 +1,10 @@
+<script>
 let chart;
 
 document.getElementById("predictForm").addEventListener("submit", (e) => {
   e.preventDefault();
   runPrediction();
-  setInterval(() => {
-    const price = document.getElementById("targetPrice").value;
-    const time = document.getElementById("targetTime").value;
-    if (price && time) runPrediction();
-  }, 10000);
+  setInterval(runPrediction, 10000);
 });
 
 async function runPrediction() {
@@ -15,16 +12,12 @@ async function runPrediction() {
   const targetTime = new Date(document.getElementById("targetTime").value);
   const now = new Date();
   const minutesAhead = Math.max(1, Math.floor((targetTime - now) / 60000));
-  if (minutesAhead <= 0) {
-    document.getElementById("result").innerHTML = "⛔ Invalid future time!";
-    return;
-  }
+  if (minutesAhead <= 0) return;
 
-  const [m1, m5, m15] = await Promise.all([
-    fetchKlines("1m", 30),
-    fetchKlines("5m", 20),
-    fetchKlines("15m", 20)
+  const [m1] = await Promise.all([
+    fetchKlines("1m", 30)
   ]);
+
   const close1 = m1.map(d => parseFloat(d[4]));
   const open1 = m1.map(d => parseFloat(d[1]));
   const high1 = m1.map(d => parseFloat(d[2]));
@@ -36,21 +29,19 @@ async function runPrediction() {
   let predictedPrice = priceNow + trendPerMin * minutesAhead;
 
   const ema1 = calculateEMA(close1.slice(-9));
-  const ema5 = calculateEMA(m5.map(d => parseFloat(d[4])).slice(-9));
-  const ema15 = calculateEMA(m15.map(d => parseFloat(d[4])).slice(-9));
-  const rsi1 = calculateRSI(close1.slice(-15));
-  const rsi5 = calculateRSI(m5.map(d => parseFloat(d[4])).slice(-15));
-  const rsi15 = calculateRSI(m15.map(d => parseFloat(d[4])).slice(-15));
+  const rsiArray = close1.map((_, i, arr) => calculateRSI(arr.slice(0, i + 1)));
+  const rsi1 = rsiArray.at(-1);
 
   const { macd, signal } = calculateMACD(close1);
   const macdSignal = macd - signal;
 
-  const { upper, lower } = calculateBollingerBands(close1);
-  const pricePos = (priceNow > upper) ? "above upper" : (priceNow < lower) ? "below lower" : "inside";
+  const { upper, lower, middle } = calculateBollingerBands(close1);
+  const pricePos = (priceNow > upper) ? "above" : (priceNow < lower) ? "below" : "inside";
 
   const avgVolume = vol1.reduce((a, b) => a + b) / vol1.length;
-  const volumeStrong = vol1.at(-1) > avgVolume;
-  // 🔸 Heiken Ashi smoothing
+  const volumeSpike = vol1.at(-1) > avgVolume * 1.5;
+
+  // Heiken Ashi
   const ha = [];
   for (let i = 0; i < close1.length; i++) {
     const o = i === 0 ? open1[0] : (ha[i - 1].o + ha[i - 1].c) / 2;
@@ -61,53 +52,77 @@ async function runPrediction() {
   }
   const haLast = ha.at(-1);
 
-  // 🔹 Candlestick Pattern Detection
+  // Candlestick strength
   const lastBody = Math.abs(close1.at(-1) - open1.at(-1));
   const lastWick = (high1.at(-1) - low1.at(-1)) - lastBody;
   const strongBullish = close1.at(-1) > open1.at(-1) && lastBody > lastWick;
   const strongBearish = close1.at(-1) < open1.at(-1) && lastBody > lastWick;
-
   if (strongBullish) predictedPrice += 20;
-  else if (strongBearish) predictedPrice -= 20;
+  if (strongBearish) predictedPrice -= 20;
 
-  // 🔸 ADX: Trend Strength Index
+  // ADX
   const { adx } = calculateADX(high1, low1, close1);
-  let adxBoost = 0;
-  if (adx > 25) adxBoost = 15;
-  else if (adx < 20) adxBoost = -10;
+  let adxBoost = adx > 25 ? 15 : adx < 20 ? -10 : 0;
 
-  // 🔹 Trendline Breakout Detection
-  const recentHigh = Math.max(...high1.slice(-6, -1));
-  const recentLow = Math.min(...low1.slice(-6, -1));
-  const volumeSpike = vol1.at(-1) > (vol1.slice(-6, -1).reduce((a, b) => a + b, 0) / 5) * 1.5;
-
+  // Trendline breakout
+  const recentHigh = Math.max(...high1.slice(-6));
+  const recentLow = Math.min(...low1.slice(-6));
   if (priceNow > recentHigh && volumeSpike) predictedPrice += 30;
-  else if (priceNow < recentLow && volumeSpike) predictedPrice -= 30;
+  if (priceNow < recentLow && volumeSpike) predictedPrice -= 30;
+
+  // ➕ EMA slope
+  const emaSlope = ema1 - close1[close1.length - 10];
+
+  // ➕ RSI recently oversold
+  const rsiRecentlyOversold = rsiArray.slice(-5).some(r => r < 30);
+
+  // ➕ BB distance
+  const bbWidth = upper - lower;
+  const bbDist = (priceNow - middle) / bbWidth;
+
+  // ➕ Momentum
+  const priceMomentum = priceNow - close1[close1.length - 10];
+  const percentMomentum = (priceMomentum / close1[close1.length - 10]) * 100;
+
+  // ➕ Volatility
+  const avgRange = high1.map((h, i) => h - low1[i]).reduce((a, b) => a + b, 0) / high1.length;
+  const volatilityIndex = avgRange / priceNow;
+
+  // Apply influence to prediction
+  if (emaSlope > 0) predictedPrice += 10;
+  if (rsiRecentlyOversold) predictedPrice += 10;
+  if (bbDist < -0.4) predictedPrice += 10;
+  if (percentMomentum > 0.5) predictedPrice += 10;
+  if (volatilityIndex > 0.015) predictedPrice += 5;
+
+  // Final prediction and confidence
   const prediction = predictedPrice >= targetPrice ? "Yes ✅" : "No ❌";
-
-  // 🔰 Final confidence score
-  let confidence =
-    (Math.min(30, Math.abs(trendPerMin * 1000))) + // base trend
-    (volumeStrong ? 10 : 5) +
-    ((macdSignal > 0) ? 15 : 5) +
-    ((rsi1 < 70 && rsi1 > 30) ? 10 : 5) +
-    ((pricePos !== "inside") ? 15 : 5) +
-    adxBoost;
-
+  let confidence = 40;
+  confidence += Math.min(30, Math.abs(trendPerMin * 1000));
+  confidence += volumeSpike ? 10 : 5;
+  confidence += (macdSignal > 0 ? 15 : 5);
+  confidence += (rsi1 < 70 && rsi1 > 30 ? 10 : 5);
+  confidence += (pricePos !== "inside" ? 15 : 5);
+  confidence += adxBoost;
+  confidence += (emaSlope > 0 ? 5 : 0);
+  confidence += (rsiRecentlyOversold ? 5 : 0);
+  confidence += (Math.abs(bbDist) > 0.4 ? 5 : 0);
+  confidence += (percentMomentum > 0.5 ? 5 : 0);
+  confidence += (volatilityIndex > 0.015 ? 5 : 0);
   confidence = Math.min(99, Math.max(40, Math.round(confidence)));
 
-  // 🧠 Human-readable explanation
+  // Explanation
   let explanation = `
-    Heiken Ashi: ${haLast.c > haLast.o ? 'Bullish 📗' : 'Bearish 📕'}.
-    ${strongBullish ? "Strong Bullish Candle 🟢 +20." : ""}
-    ${strongBearish ? "Strong Bearish Candle 🔴 -20." : ""}
-    ADX: ${adx.toFixed(1)} ${adx > 25 ? "(Strong trend +15)" : adx < 20 ? "(Choppy -10)" : ""}.
-    Trendline: ${priceNow > recentHigh ? "Breakout ⬆️" : priceNow < recentLow ? "Breakdown ⬇️" : "No breakout"}.
-    Volume: ${volumeSpike ? "Spike 📈" : "Normal"}.
+    Heiken Ashi: ${haLast.c > haLast.o ? 'Bullish 📗' : 'Bearish 📕'}.<br>
+    ${strongBullish ? "Strong Bullish Candle 🟢 +20.<br>" : ""}
+    ${strongBearish ? "Strong Bearish Candle 🔴 -20.<br>" : ""}
+    ADX: ${adx.toFixed(1)} (${adx > 25 ? "Strong trend +15" : adx < 20 ? "Choppy -10" : "Neutral"}).<br>
+    RSI Oversold in last 5 mins: ${rsiRecentlyOversold ? "Yes ✅" : "No"}<br>
+    EMA Slope: ${emaSlope.toFixed(2)}<br>
+    BB Distance: ${bbDist.toFixed(2)}<br>
+    10-min Momentum: ${percentMomentum.toFixed(2)}%<br>
+    Volatility Index: ${(volatilityIndex * 100).toFixed(2)}%
   `;
-
-  // Render UI
-  const timeStamps = m1.map(d => new Date(d[0]).toLocaleTimeString());
 
   document.getElementById("result").innerHTML = `
     <p><b>Current Price:</b> ${priceNow.toFixed(2)} USDT</p>
@@ -123,7 +138,7 @@ async function runPrediction() {
   chart = new Chart(document.getElementById("sparklineChart"), {
     type: "line",
     data: {
-      labels: timeStamps,
+      labels: m1.map(d => new Date(d[0]).toLocaleTimeString()),
       datasets: [{
         data: close1,
         borderColor: "#00aaff",
@@ -138,6 +153,8 @@ async function runPrediction() {
     }
   });
 }
+
+// ===== Helper Functions =====
 async function fetchKlines(interval, limit) {
   const res = await fetch(`https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval=${interval}&limit=${limit}`);
   return await res.json();
@@ -180,7 +197,6 @@ function calculateBollingerBands(prices, period = 20) {
   };
 }
 
-// 🔧 ADX Calculation
 function calculateADX(highs, lows, closes, period = 14) {
   let tr = [], plusDM = [], minusDM = [];
 
@@ -199,3 +215,4 @@ function calculateADX(highs, lows, closes, period = 14) {
   const dx = 100 * Math.abs(plusDI - minusDI) / (plusDI + minusDI);
   return { adx: dx };
 }
+</script>
