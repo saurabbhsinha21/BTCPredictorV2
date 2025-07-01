@@ -1,38 +1,63 @@
 let model;
 
+// Load the trained LSTM model from tfjs_model folder
 async function loadModel() {
   try {
-    model = await tf.loadLayersModel('tfjs_model/model.json');
+    model = await tf.loadLayersModel("tfjs_model/model.json");
     console.log("✅ Model loaded.");
-  } catch (err) {
-    console.error("❌ Failed to load model", err);
+  } catch (error) {
+    console.error("❌ Failed to load model:", error);
   }
 }
 
-async function predictBTC() {
-  const targetPrice = parseFloat(document.getElementById('targetPrice').value);
-  const targetTime = document.getElementById('targetTime').value;
+// Dummy function – replace this with actual price fetching logic
+async function getLast30Prices() {
+  // Fetch historical data from Binance (past 30 minutes)
+  const res = await fetch("https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval=1m&limit=30");
+  const data = await res.json();
+  const closes = data.map(d => parseFloat(d[4]));
 
-  if (!targetPrice || !targetTime) {
-    alert("Please enter both target price and time");
-    return;
-  }
+  // Normalize using min-max between 0 and 1 (as model was trained)
+  const min = Math.min(...closes);
+  const max = Math.max(...closes);
+  const normalized = closes.map(p => (p - min) / (max - min));
+
+  return { normalized, min, max };
+}
+
+document.getElementById("predictForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+
+  const targetPrice = parseFloat(document.getElementById("targetPrice").value);
+  const targetTime = new Date(document.getElementById("targetTime").value);
 
   if (!model) {
-    alert("Model not loaded");
+    document.getElementById("result").innerText = "❌ Model not loaded.";
     return;
   }
 
-  // Generate dummy input data of shape [1, 30, 1]
-  // You should replace this with real-time price data
-  const inputData = tf.tensor3d([Array(30).fill(106000)], [1, 30, 1]);
+  // Step 1: Get normalized data
+  const { normalized, min, max } = await getLast30Prices();
+  if (normalized.length < 30) {
+    document.getElementById("result").innerText = "Not enough data to predict.";
+    return;
+  }
 
-  const prediction = model.predict(inputData);
-  const predictedPrice = (await prediction.data())[0];
+  // Step 2: Predict using the ML model
+  const inputTensor = tf.tensor3d([normalized], [1, 30, 1]);
+  const predictionTensor = model.predict(inputTensor);
+  const predictedNormalized = (await predictionTensor.data())[0];
+  const predictedPrice = predictedNormalized * (max - min) + min;
 
-  const output = document.getElementById("output");
-  output.innerText = `Predicted Price: ${predictedPrice.toFixed(2)} USDT\n
-    Will it be above ${targetPrice}? → ${predictedPrice >= targetPrice ? 'Yes ✅' : 'No ❌'}`;
-}
+  const decision = predictedPrice >= targetPrice ? "Yes ✅" : "No ❌";
 
+  // Step 3: Display result
+  document.getElementById("result").innerHTML = `
+    <p><b>Predicted Price:</b> ${predictedPrice.toFixed(2)} USDT</p>
+    <p><b>Target:</b> ${targetPrice.toFixed(2)} by ${targetTime.toLocaleTimeString()}</p>
+    <p><b>Prediction:</b> ${decision}</p>
+  `;
+});
+
+// Load model when page loads
 loadModel();
