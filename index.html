@@ -4,7 +4,6 @@
   <meta charset="UTF-8">
   <title>BTC/USDT Predictor V2 (ML + Rule-Based)</title>
   <link rel="stylesheet" href="style.css">
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.13.0/dist/tf.min.js"></script>
 </head>
 <body>
@@ -13,15 +12,14 @@
   <form id="predictForm">
     <label for="targetPrice">Target Price (USDT):</label>
     <input type="number" id="targetPrice" required>
-    
+
     <label for="targetTime">Target Time:</label>
     <input type="datetime-local" id="targetTime" required>
-    
+
     <button type="submit">Predict</button>
   </form>
 
   <div id="result" style="margin-top: 20px;"></div>
-  <canvas id="sparklineChart" height="60"></canvas>
 
   <script src="script.js"></script>
 </body>
