@@ -2,55 +2,44 @@ let model;
 
 async function loadModel() {
   try {
-    model = await tf.loadLayersModel("tfjs_model/model.json");
-    console.log("✅ Model loaded.");
+    model = await tf.loadLayersModel(
+      "https://saurabbhsinha21.github.io/BTCPredictorV2/tfjs_model/model.json"
+    );
+    console.log("✅ Model loaded successfully");
   } catch (error) {
-    console.error("❌ Model loading failed:", error);
+    alert("❌ Model not loaded");
+    console.error(error);
   }
 }
 
-// This fetches 30 1m candle closes from Binance
-async function getNormalizedPrices() {
-  const res = await fetch("https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval=1m&limit=30");
-  const data = await res.json();
-  const closes = data.map(d => parseFloat(d[4]));
-
-  // Normalize
-  const min = Math.min(...closes);
-  const max = Math.max(...closes);
-  const normalized = closes.map(p => (p - min) / (max - min));
-
-  return { normalized, min, max };
+function preprocessData(data) {
+  // Normalize and reshape to [1, 30, 1]
+  const tensor = tf.tensor(data).reshape([1, 30, 1]);
+  return tensor;
 }
 
-document.getElementById("predictForm").addEventListener("submit", async (e) => {
-  e.preventDefault();
+document.addEventListener("DOMContentLoaded", () => {
+  loadModel();
 
-  const targetPrice = parseFloat(document.getElementById("targetPrice").value);
-  const targetTime = new Date(document.getElementById("targetTime").value);
+  const form = document.getElementById("predictForm");
+  const resultDiv = document.getElementById("result");
 
-  if (!model) {
-    alert("Model not loaded");
-    return;
-  }
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
 
-  const { normalized, min, max } = await getNormalizedPrices();
-  if (normalized.length < 30) {
-    alert("Not enough price data");
-    return;
-  }
+    if (!model) {
+      alert("❌ Model not loaded yet!");
+      return;
+    }
 
-  const input = tf.tensor3d([normalized], [1, 30, 1]);
-  const output = model.predict(input);
-  const prediction = (await output.data())[0];
-  const predictedPrice = prediction * (max - min) + min;
+    // 🔧 For now, we use dummy data (replace with real BTC prices later)
+    const dummyPrices = Array.from({ length: 30 }, () => Math.random());
 
-  const result = predictedPrice >= targetPrice ? "Yes ✅" : "No ❌";
+    const input = preprocessData(dummyPrices);
 
-  document.getElementById("result").innerHTML = `
-    <p><b>Predicted Price:</b> ${predictedPrice.toFixed(2)} USDT</p>
-    <p><b>Prediction:</b> ${result}</p>
-  `;
+    const prediction = model.predict(input);
+    const output = await prediction.data();
+
+    resultDiv.innerText = `Predicted price: ${output[0].toFixed(2)} USDT`;
+  });
 });
-
-loadModel();
