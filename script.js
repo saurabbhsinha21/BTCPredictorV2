@@ -5,41 +5,30 @@ async function loadModel() {
     model = await tf.loadLayersModel(
       "https://saurabbhsinha21.github.io/BTCPredictorV2/tfjs_model/model.json"
     );
-    console.log("✅ Model loaded successfully");
-  } catch (error) {
+    console.log("✅ Model loaded.");
+  } catch (e) {
     alert("❌ Model not loaded");
-    console.error(error);
+    console.error(e);
   }
 }
 
-function preprocessData(data) {
-  // Normalize and reshape to [1, 30, 1]
-  const tensor = tf.tensor(data).reshape([1, 30, 1]);
-  return tensor;
-}
+loadModel();
 
-document.addEventListener("DOMContentLoaded", () => {
-  loadModel();
+document.getElementById("predictForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  if (!model) return alert("Model not loaded");
 
-  const form = document.getElementById("predictForm");
-  const resultDiv = document.getElementById("result");
+  // Fetch last 30 prices and normalize similarly to training
+  const resp = await fetch("https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval=1m&limit=30");
+  const candles = await resp.json();
+  const closes = candles.map(d => parseFloat(d[4]));
+  const min = Math.min(...closes), max = Math.max(...closes);
+  const norm = closes.map(p => (p - min) / (max - min));
 
-  form.addEventListener("submit", async (e) => {
-    e.preventDefault();
+  const input = tf.tensor(norm).reshape([1, 30, 1]);
+  const pred = model.predict(input);
+  const yPred = (await pred.data())[0] * (max - min) + min;
 
-    if (!model) {
-      alert("❌ Model not loaded yet!");
-      return;
-    }
-
-    // 🔧 For now, we use dummy data (replace with real BTC prices later)
-    const dummyPrices = Array.from({ length: 30 }, () => Math.random());
-
-    const input = preprocessData(dummyPrices);
-
-    const prediction = model.predict(input);
-    const output = await prediction.data();
-
-    resultDiv.innerText = `Predicted price: ${output[0].toFixed(2)} USDT`;
-  });
+  document.getElementById("result").innerHTML =
+    `Predicted Price: ${yPred.toFixed(2)} USDT`;
 });
